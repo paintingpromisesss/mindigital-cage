@@ -1,0 +1,29 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+mindigital-cage
+
+# Output certificates and keys
+certs_out/
+*.crt
+*.pem
+*.key
+*.der
+
+# IDE / Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Go test artifacts
+*.test
+*.out
