@@ -19,47 +19,35 @@ type StoreAuditResult struct {
 }
 
 func InstallCertificates(localRootPath, crossPath, subPath string) error {
-	fmt.Println("[*] Очистка оригинального Root CA Минцифры из хранилища 'Root'...")
 	_ = exec.Command("certutil", "-f", "-delstore", "Root", "Russian Trusted Root CA").Run()
 	_ = exec.Command("certutil", "-user", "-f", "-delstore", "Root", "Russian Trusted Root CA").Run()
 
-	fmt.Println("[*] Установка Local Restricted Root CA в системное хранилище 'Root'...")
 	if out, err := exec.Command("certutil", "-f", "-addstore", "Root", localRootPath).CombinedOutput(); err != nil {
 		return fmt.Errorf("не удалось добавить в Root (требуются права Администратора): %w\nВывод: %s", err, string(out))
 	}
 
-	fmt.Println("[*] Установка кросс-сертификата в системное хранилище промежуточных ЦС ('CA')...")
 	if out, err := exec.Command("certutil", "-f", "-addstore", "CA", crossPath).CombinedOutput(); err != nil {
 		return fmt.Errorf("не удалось добавить кросс-сертификат в CA: %w\nВывод: %s", err, string(out))
 	}
 
-	fmt.Println("[*] Установка Russian Trusted Sub CA в хранилище промежуточных ЦС ('CA')...")
 	if out, err := exec.Command("certutil", "-f", "-addstore", "CA", subPath).CombinedOutput(); err != nil {
 		return fmt.Errorf("не удалось добавить Sub CA в CA: %w\nВывод: %s", err, string(out))
 	}
-
-	fmt.Println("[+] Успешно установлено в системное хранилище Windows!")
-	fmt.Println("    - 'Local Restricted Root CA' -> Доверенные корневые центры сертификации (Root)")
-	fmt.Println("    - 'mindigital_cross_ca'     -> Промежуточные центры сертификации (CA)")
-	fmt.Println("    - 'mindigital_sub_ca'       -> Промежуточные центры сертификации (CA)")
 
 	checkFirefox()
 	return nil
 }
 
 func UninstallCertificates() error {
-	fmt.Println("[*] Удаление Local Restricted Root CA из хранилищ Root (Machine и User)...")
 	_ = exec.Command("certutil", "-f", "-delstore", "Root", LocalRootCN).Run()
 	_ = exec.Command("certutil", "-user", "-f", "-delstore", "Root", LocalRootCN).Run()
 
-	fmt.Println("[*] Удаление промежуточных сертификатов Минцифры из хранилищ CA...")
 	_ = exec.Command("certutil", "-f", "-delstore", "CA", "Russian Trusted Root CA").Run()
 	_ = exec.Command("certutil", "-user", "-f", "-delstore", "CA", "Russian Trusted Root CA").Run()
 
 	_ = exec.Command("certutil", "-f", "-delstore", "CA", "Russian Trusted Sub CA").Run()
 	_ = exec.Command("certutil", "-user", "-f", "-delstore", "CA", "Russian Trusted Sub CA").Run()
 
-	fmt.Println("[+] Сертификаты успешно удалены из хранилища Windows.")
 	return nil
 }
 
@@ -95,12 +83,7 @@ func checkFirefox() {
 	}
 	ffDir := filepath.Join(appData, "Mozilla", "Firefox")
 	if _, err := os.Stat(ffDir); err == nil {
-		fmt.Println("\n[i] Внимание для пользователей Mozilla Firefox:")
-		fmt.Println("    Firefox по умолчанию использует собственную базу сертификатов (NSS).")
-		fmt.Println("    Чтобы Firefox подхватывал системные сертификаты Windows:")
-		fmt.Println("    1. Откройте в Firefox страницу: about:config")
-		fmt.Println("    2. Найдите параметр: security.enterprise_roots.enabled")
-		fmt.Println("    3. Переключите его в: true")
+		fmt.Println("[i] Для Firefox: включите security.enterprise_roots.enabled в about:config")
 	}
 }
 

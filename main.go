@@ -5,36 +5,29 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strings"
 )
 
 const appVersion = "1.0.0"
 
 func main() {
 	outDir := flag.String("out", "./certs_out", "Директория для сохранения сгенерированных сертификатов")
-	install := flag.Bool("install", false, "Автоматически установить сертификаты в системное хранилище (требуются права Администратора/root)")
+	install := flag.Bool("install", false, "Установить сертификаты в системное хранилище (требуется sudo / Администратор)")
 	uninstall := flag.Bool("uninstall", false, "Удалить установленные сертификаты из системы")
-	verify := flag.Bool("verify", false, "Запустить полный аудит и криптографическую проверку изоляции (Name Constraints)")
+	verify := flag.Bool("verify", false, "Проверить изоляцию сертификатов и хранилище ОС")
 	cleanOrig := flag.Bool("clean-orig", false, "Удалить оригинальный незащищенный корень Минцифры из хранилища 'Root'")
-	domainsFlag := flag.String("domains", "", "Разрешенные доменные зоны через запятую (по умолчанию: ru, su, xn--p1ai (.рф))")
+	domainsFlag := flag.String("domains", "", "Разрешенные доменные зоны через запятую (по умолчанию: ru, su, xn--p1ai)")
 	rootURL := flag.String("root-url", DefaultRootCAURL, "URL для загрузки Root CA Минцифры")
 	subURL := flag.String("sub-url", DefaultSubCAURL, "URL для загрузки Sub CA Минцифры")
 	version := flag.Bool("version", false, "Показать версию утилиты")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "mindigital-cage v%s — Безопасная изоляция сертификатов Минцифры\n\n", appVersion)
+		fmt.Fprintf(os.Stderr, "mindigital-cage v%s — Изоляция сертификатов Минцифры (Name Constraints)\n\n", appVersion)
 		fmt.Fprintf(os.Stderr, "Использование:\n")
-		fmt.Fprintf(os.Stderr, "  mindigital-cage [параметры]\n\n")
-		fmt.Fprintf(os.Stderr, "Основные сценарии:\n")
-		fmt.Fprintf(os.Stderr, "  1. Генерация и автоустановка в систему:\n")
-		fmt.Fprintf(os.Stderr, "     mindigital-cage -install\n\n")
-		fmt.Fprintf(os.Stderr, "  2. Проверка работы клетки и аудит безопасности:\n")
-		fmt.Fprintf(os.Stderr, "     mindigital-cage -verify\n\n")
-		fmt.Fprintf(os.Stderr, "  3. Полное удаление сертификатов из системы:\n")
-		fmt.Fprintf(os.Stderr, "     mindigital-cage -uninstall\n\n")
-		fmt.Fprintf(os.Stderr, "  4. Удаление только оригинального незащищенного корня Минцифры:\n")
-		fmt.Fprintf(os.Stderr, "     mindigital-cage -clean-orig\n\n")
-		fmt.Fprintf(os.Stderr, "Доступные флаги:\n")
+		fmt.Fprintf(os.Stderr, "  mindigital-cage -install     Установить изолированные сертификаты в систему\n")
+		fmt.Fprintf(os.Stderr, "  mindigital-cage -verify      Проверить работу изоляции и хранилище\n")
+		fmt.Fprintf(os.Stderr, "  mindigital-cage -uninstall   Удалить сертификаты из системы\n")
+		fmt.Fprintf(os.Stderr, "  mindigital-cage -clean-orig  Удалить незащищенный оригинал Минцифры\n\n")
+		fmt.Fprintf(os.Stderr, "Флаги:\n")
 		flag.PrintDefaults()
 	}
 
@@ -47,23 +40,23 @@ func main() {
 
 	if *uninstall {
 		if err := UninstallCertificates(); err != nil {
-			fatalf("Ошибка удаления сертификатов: %v", err)
+			fatalf("Ошибка удаления: %v", err)
 		}
+		fmt.Println("[+] Сертификаты успешно удалены из системы.")
 		return
 	}
 
 	if *cleanOrig {
-		fmt.Println("[*] Очистка оригинального корня Минцифры из системного хранилища...")
 		if err := CleanOriginalRoot(); err != nil {
-			fatalf("Ошибка очистки оригинального корня: %v", err)
+			fatalf("Ошибка очистки: %v", err)
 		}
-		fmt.Println("[+] Оригинальный корень Минцифры успешно удален из хранилища 'Root'.")
+		fmt.Println("[+] Оригинальный корень Минцифры удален из хранилища 'Root'.")
 		return
 	}
 
 	if *verify {
 		if err := RunVerification(*outDir); err != nil {
-			fatalf("Верификация завершилась с ошибкой: %v", err)
+			fatalf("Ошибка верификации: %v", err)
 		}
 		return
 	}
@@ -75,9 +68,7 @@ func main() {
 		permittedDomains = DefaultPermittedDomains()
 	}
 
-	fmt.Printf("=== mindigital-cage v%s ===\n", appVersion)
-	fmt.Printf("Разрешенные зоны (Name Constraints): %s\n\n", strings.Join(permittedDomains, ", "))
-
+	fmt.Println("[*] Загрузка и выпуск изолированных сертификатов...")
 	res, err := GenerateCage(GenerateOptions{
 		OutDir:           *outDir,
 		PermittedDomains: permittedDomains,
@@ -85,31 +76,22 @@ func main() {
 		SubCAURL:         *subURL,
 	})
 	if err != nil {
-		fatalf("Ошибка генерации клетки: %v", err)
+		fatalf("Ошибка генерации: %v", err)
 	}
 
-	fmt.Printf("\n[+] Сертификаты успешно сгенерированы и сохранены в %s:\n", *outDir)
-	fmt.Printf("    1. %s\n       -> Ставить в Доверенные корневые центры сертификации (Root)\n", res.LocalRootPath)
-	fmt.Printf("    2. %s\n       -> Ставить в Промежуточные центры сертификации (CA)\n", res.CrossCertPath)
-	fmt.Printf("    3. %s\n       -> Ставить в Промежуточные центры сертификации (CA)\n", res.SubCertPath)
-	fmt.Printf("    4. %s\n       -> Оригинал Минцифры (бэкап, НЕ устанавливать!)\n", res.OrigRootBackup)
-
 	if *install {
-		fmt.Printf("\n[*] Запуск автоматической установки в систему (%s)...\n", runtime.GOOS)
+		fmt.Println("[*] Установка в системное хранилище...")
 		if err := InstallCertificates(res.LocalRootPath, res.CrossCertPath, res.SubCertPath); err != nil {
 			fatalf("Ошибка установки: %v", err)
 		}
-		fmt.Println("\n[*] Запуск проверки установленной цепочки...")
-		_ = RunVerification(*outDir)
+		fmt.Println("[+] Сертификаты Минцифры успешно изолированы и установлены в систему.")
 	} else {
-		fmt.Println("\n[i] Сертификаты готовы! Чтобы установить их в систему автоматически, выполните:")
-		fmt.Println("    mindigital-cage -install    (от имени Администратора/root)")
-		fmt.Println("\n[i] Или запустите проверку:")
-		fmt.Println("    mindigital-cage -verify")
+		fmt.Printf("[+] Сертификаты сохранены в %s\n", *outDir)
+		fmt.Println("[i] Для установки в систему запустите:  mindigital-cage -install")
 	}
 }
 
 func fatalf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "\n[!] "+format+"\n", args...)
+	fmt.Fprintf(os.Stderr, "[!] "+format+"\n", args...)
 	os.Exit(1)
 }

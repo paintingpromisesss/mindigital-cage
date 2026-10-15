@@ -32,7 +32,6 @@ func InstallCertificates(localRootPath, crossPath, subPath string) error {
 	}
 
 	if targetDir != "" {
-		fmt.Printf("[*] Обнаружена система с p11-kit / ca-trust (%s)...\n", targetDir)
 		if err := copyFile(localRootPath, filepath.Join(targetDir, "local_restricted_root.crt")); err != nil {
 			return err
 		}
@@ -49,12 +48,10 @@ func InstallCertificates(localRootPath, crossPath, subPath string) error {
 				return fmt.Errorf("ошибка update-ca-trust: %w (%s)", err, string(out))
 			}
 		}
-		fmt.Println("[+] Системное хранилище сертификатов Linux успешно обновлено!")
 		return nil
 	}
 
 	if _, err := os.Stat(debianCertsDir); err == nil {
-		fmt.Printf("[*] Обнаружена система Debian/Ubuntu (%s)...\n", debianCertsDir)
 		if err := copyFile(localRootPath, filepath.Join(debianCertsDir, "local_restricted_root.crt")); err != nil {
 			return err
 		}
@@ -65,7 +62,6 @@ func InstallCertificates(localRootPath, crossPath, subPath string) error {
 		if out, err := exec.Command("update-ca-certificates").CombinedOutput(); err != nil {
 			return fmt.Errorf("ошибка update-ca-certificates: %w (%s)", err, string(out))
 		}
-		fmt.Println("[+] Системное хранилище сертификатов Linux успешно обновлено!")
 		return nil
 	}
 
@@ -79,7 +75,7 @@ func UninstallCertificates() error {
 		if _, err := os.Stat(dir); err == nil {
 			_ = os.Remove(filepath.Join(dir, "local_restricted_root.crt"))
 			_ = os.Remove(filepath.Join(dir, "mindigital_cross_ca.crt"))
-			_ = os.Remove(filepath.Join(dir, "mindigital_sub_ca.crt")) // на случай старых установок
+			_ = os.Remove(filepath.Join(dir, "mindigital_sub_ca.crt"))
 			if _, err := exec.LookPath("trust"); err == nil {
 				_ = exec.Command("trust", "extract-compat").Run()
 			} else if _, err := exec.LookPath("update-ca-trust"); err == nil {
@@ -101,7 +97,6 @@ func UninstallCertificates() error {
 		return fmt.Errorf("не найдены стандартные каталоги ca-certificates для удаления")
 	}
 
-	fmt.Println("[+] Сертификаты клетки удалены из системы Linux.")
 	return nil
 }
 

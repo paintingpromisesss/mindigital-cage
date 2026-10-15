@@ -97,20 +97,15 @@ func GenerateCage(opts GenerateOptions) (*CageResult, error) {
 		opts.PermittedDomains = DefaultPermittedDomains()
 	}
 
-	fmt.Printf("[*] Скачивание оригинальных сертификатов Минцифры...\n")
 	origRoot, rawRootPEM, err := fetchCert(opts.RootCAURL)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось скачать Root CA (%s): %w", opts.RootCAURL, err)
+		return nil, fmt.Errorf("не удалось скачать Root CA: %w", err)
 	}
 	origSub, rawSubPEM, err := fetchCert(opts.SubCAURL)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось скачать Sub CA (%s): %w", opts.SubCAURL, err)
+		return nil, fmt.Errorf("не удалось скачать Sub CA: %w", err)
 	}
 
-	fmt.Printf("[+] Скачан Root CA: %s (SKI: %X)\n", origRoot.Subject.CommonName, origRoot.SubjectKeyId)
-	fmt.Printf("[+] Скачан Sub CA:  %s (AKI: %X)\n", origSub.Subject.CommonName, origSub.AuthorityKeyId)
-
-	fmt.Println("[*] Генерация одноразового 4096-битного ключа для локального корня...")
 	localRootKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка генерации RSA ключа: %w", err)
@@ -147,7 +142,6 @@ func GenerateCage(opts GenerateOptions) (*CageResult, error) {
 		ExcludedIPRanges:            excludedIPs,
 	}
 
-	fmt.Println("[*] Выпуск локального ограниченного корневого сертификата...")
 	localRootDER, err := x509.CreateCertificate(rand.Reader, localRootTmpl, localRootTmpl, &localRootKey.PublicKey, localRootKey)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания Local Root CA: %w", err)
@@ -179,7 +173,6 @@ func GenerateCage(opts GenerateOptions) (*CageResult, error) {
 		ExcludedIPRanges:            excludedIPs,
 	}
 
-	fmt.Println("[*] Выпуск кросс-сертификата (подписываем публичный ключ Минцифры нашим корнем)...")
 	crossDER, err := x509.CreateCertificate(rand.Reader, crossTmpl, localRootCert, origRoot.PublicKey, localRootKey)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания кросс-сертификата: %w", err)
@@ -190,7 +183,6 @@ func GenerateCage(opts GenerateOptions) (*CageResult, error) {
 	}
 
 	zeroKey(localRootKey)
-	fmt.Println("[+] Приватный ключ локального корня полностью затерт в памяти.")
 
 	if err := os.MkdirAll(opts.OutDir, 0o755); err != nil {
 		return nil, fmt.Errorf("ошибка создания папки %s: %w", opts.OutDir, err)

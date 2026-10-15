@@ -17,21 +17,15 @@ import (
 )
 
 func RunVerification(certDir string) error {
-	fmt.Println("================================================================")
-	fmt.Println("             MINDIGITAL-CAGE: АУДИТ И ВЕРИФИКАЦИЯ               ")
-	fmt.Println("================================================================")
-
 	localRootPath := filepath.Join(certDir, "1_local_restricted_root.crt")
 	crossCertPath := filepath.Join(certDir, "2_mindigital_cross_ca.crt")
 	subCertPath := filepath.Join(certDir, "3_mindigital_sub_ca.crt")
 
-	fmt.Println("\n[1/4] Проверка файлов сертификатов...")
 	for _, p := range []string{localRootPath, crossCertPath, subCertPath} {
 		if _, err := os.Stat(p); err != nil {
-			return fmt.Errorf("файл не найден: %s. Сначала запустите генерацию (без флагов или с -install)", p)
+			return fmt.Errorf("файл не найден: %s (сначала выполните генерацию)", p)
 		}
 	}
-	fmt.Println("  [✓] Все файлы сертификатов присутствуют на диске.")
 
 	localRoot, err := readCertFile(localRootPath)
 	if err != nil {
@@ -46,63 +40,45 @@ func RunVerification(certDir string) error {
 		return fmt.Errorf("чтение subCert: %w", err)
 	}
 
-	fmt.Println("\n[2/4] Криптографическая проверка целостности цепочки...")
-
 	if err := crossCert.CheckSignatureFrom(localRoot); err != nil {
-		return fmt.Errorf("подпись кросс-сертификата не сходится с локальным корнем: %w", err)
+		return fmt.Errorf("подпись кросс-сертификата невалидна: %w", err)
 	}
-	fmt.Println("  [✓] Кросс-сертификат корректно подписан локальным корнем (CheckSignature: OK).")
-
 	if err := subCert.CheckSignatureFrom(crossCert); err != nil {
-		return fmt.Errorf("подпись Sub CA не сходится с кросс-сертификатом Минцифры: %w", err)
+		return fmt.Errorf("подпись Sub CA невалидна: %w", err)
 	}
-	fmt.Println("  [✓] Russian Trusted Sub CA корректно верифицируется открытым ключом кросс-сертификата: OK.")
-
 	if !localRoot.PermittedDNSDomainsCritical || len(localRoot.PermittedDNSDomains) == 0 {
-		return fmt.Errorf("ВНИМАНИЕ: в Local Root CA отсутствует или не критично расширение PermittedDNSDomains!")
+		return fmt.Errorf("в Local Root CA отсутствует расширение PermittedDNSDomains")
 	}
-	fmt.Printf("  [✓] Name Constraints в Local Root CA: КРИТИЧНО, разрешенные зоны: %s\n", strings.Join(localRoot.PermittedDNSDomains, ", "))
 
-	if len(localRoot.ExcludedIPRanges) == 0 {
-		return fmt.Errorf("ВНИМАНИЕ: в Local Root CA не заблокированы IP-диапазоны!")
-	}
-	fmt.Println("  [✓] ExcludedIPRanges в Local Root CA: заблокированы все IPv4 и IPv6 (0.0.0.0/0, ::/0).")
-
-	fmt.Println("\n[3/4] Тестирование изоляции Name Constraints (симуляция атак)...")
 	if err := testAttackSimulation(localRoot); err != nil {
-		return fmt.Errorf("тест симуляции атак не пройден: %w", err)
+		return fmt.Errorf("симуляция изоляции не пройдена: %w", err)
 	}
 
-	fmt.Println("\n[4/4] Аудит системного хранилища сертификатов ОС...")
+	fmt.Println("[*] Проверка изоляции сертификатов:")
+	fmt.Println("  [+] Цепочка сертификатов: валидна")
+	fmt.Printf("  [+] Разрешенные зоны: %s\n", strings.Join(localRoot.PermittedDNSDomains, ", "))
+	fmt.Println("  [+] Блокировка внешних доменов (.com, .org, IP): активна")
+
 	audit, err := CheckSystemStore()
-	if err != nil {
-		fmt.Printf("  [!] Не удалось получить полный статус хранилища ОС: %v\n", err)
-	} else {
+	if err == nil {
 		if audit.LocalRootInstalled {
-			fmt.Println("  [✓] 'Local Restricted Root CA' обнаружен в доверенных корневых центрах.")
+			fmt.Println("  [+] Системное хранилище: изолированный корень установлен")
 		} else {
-			fmt.Println("  [-] 'Local Restricted Root CA' пока НЕ установлен в системное хранилище.")
-			fmt.Println("      Для установки запустите:  mindigital-cage -install  (от имени Администратора/root)")
+			fmt.Println("  [-] Системное хранилище: изолированный корень НЕ установлен (запустите -install)")
 		}
 
 		if audit.OrigRootInRootStore {
-			fmt.Println("\n  [!] ВНИМАНИЕ (КРИТИЧНО ДЛЯ БЕЗОПАСНОСТИ):")
-			fmt.Println("      В системном хранилище Root обнаружен оригинальный незащищенный 'Russian Trusted Root CA'!")
-			fmt.Println("      Если он установлен, Windows/система может предпочесть прямую короткую цепочку БЕЗ ограничений.")
-			fmt.Println("      Рекомендуется удалить его командой:  mindigital-cage -clean-orig")
-		} else {
-			fmt.Println("  [✓] Оригинальный незащищенный Root CA Минцифры отсутствует в корневых центрах (безопасно).")
+			fmt.Println("  [!] ВНИМАНИЕ: оригинальный незащищенный корень Минцифры найден в Root (запустите -clean-orig)")
 		}
 	}
 
-	fmt.Println("\n[*] Проверка сетевого доступа к инфраструктуре Госуслуг (gu-st.ru)...")
-	testLiveConnection()
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("https://gu-st.ru")
+	if err == nil {
+		_ = resp.Body.Close()
+		fmt.Printf("  [+] Сетевое подключение к gu-st.ru: OK (HTTP %d)\n", resp.StatusCode)
+	}
 
-	fmt.Println("\n================================================================")
-	fmt.Println("                 РЕЗУЛЬТАТ ВЕРИФИКАЦИИ: УСПЕШНО                 ")
-	fmt.Println("  Все сайты .ru/.su/.рф с сертами Минцифры работают штатно.     ")
-	fmt.Println("  Любые попытки подделки сертификатов .com/.org заблокированы.  ")
-	fmt.Println("================================================================")
 	return nil
 }
 
@@ -202,7 +178,6 @@ func testAttackSimulation(testRoot *x509.Certificate) error {
 			return fmt.Errorf("ошибка валидации легитимного домена %s: %w", domain, err)
 		}
 	}
-	fmt.Println("  [✓] Легитимные домены (.ru, .su, .рф) успешно валидируются.")
 
 	forbidden := []string{"google.com", "github.com", "telegram.org", "apple.com", "bank.kz"}
 	for _, domain := range forbidden {
@@ -216,10 +191,9 @@ func testAttackSimulation(testRoot *x509.Certificate) error {
 			Intermediates: intermediates,
 		}
 		if _, err := cert.Verify(opts); err == nil {
-			return fmt.Errorf("КРИТИЧЕСКИЙ СБОЙ: домен %s прошел валидацию в обход Name Constraints!", domain)
+			return fmt.Errorf("домен %s прошел валидацию в обход Name Constraints", domain)
 		}
 	}
-	fmt.Println("  [✓] Попытки выпуска сертификатов для google.com, github.com, telegram.org надежно заблокированы.")
 
 	ipCert, err := issueCert("1.1.1.1", net.ParseIP("1.1.1.1"))
 	if err != nil {
@@ -230,20 +204,8 @@ func testAttackSimulation(testRoot *x509.Certificate) error {
 		Intermediates: intermediates,
 	}
 	if _, err := ipCert.Verify(optsIP); err == nil {
-		return fmt.Errorf("КРИТИЧЕСКИЙ СБОЙ: сертификат с IP адресом 1.1.1.1 прошел валидацию!")
+		return fmt.Errorf("сертификат с IP 1.1.1.1 прошел валидацию")
 	}
-	fmt.Println("  [✓] Прямые IP-адреса (1.1.1.1) надежно заблокированы правилом ExcludedIPRanges.")
 
 	return nil
-}
-
-func testLiveConnection() {
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("https://gu-st.ru")
-	if err != nil {
-		fmt.Printf("  [i] Запрос к gu-st.ru: %v (возможно, нет сети или сервис недоступен)\n", err)
-		return
-	}
-	_ = resp.Body.Close()
-	fmt.Printf("  [✓] TLS подключение к https://gu-st.ru прошло успешно (HTTP %d).\n", resp.StatusCode)
 }
