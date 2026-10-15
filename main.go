@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const appVersion = "1.1.0"
+const appVersion = "1.0.0"
 
 func main() {
 	outDir := flag.String("out", "./certs_out", "Директория для сохранения сгенерированных сертификатов")
