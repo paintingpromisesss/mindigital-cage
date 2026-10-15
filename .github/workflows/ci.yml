@@ -21,9 +21,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: 'stable'
 
-      - name: Run tests
+      - name: Run tests (macOS)
+        if: runner.os == 'macOS'
+        run: go test -v -ldflags="-linkmode=external" ./...
+
+      - name: Run tests (Linux & Windows)
+        if: runner.os != 'macOS'
         run: go test -v ./...
 
   release:
@@ -40,7 +45,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: 'stable'
 
       - name: Build Matrix
         run: |
